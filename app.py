@@ -17,20 +17,22 @@ class LSTMModel(nn.Module):
         self.hidden_size = hidden_size
         self.num_layers = num_layers
         self.lstm = nn.LSTM(input_size, hidden_size, num_layers, batch_first=True)
-        self.fc = nn.Linear(hidden_size, output_size)
+        self.fc1 = nn.Linear(hidden_size, 32)
+        self.fc2 = nn.Linear(32, output_size)
 
     def forward(self, x):
         h0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size)
         c0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size)
         out, _ = self.lstm(x, (h0, c0))
-        out = self.fc(out[:, -1, :])
+        out = torch.relu(self.fc1(out[:, -1, :]))
+        out = self.fc2(out)
         return out
 
 # ------------------------------
 # 2️⃣ Load trained model
 # ------------------------------
 input_size = 6
-hidden_size = 50
+hidden_size = 64
 num_layers = 2
 output_size = 1
 
