@@ -1,116 +1,133 @@
 import streamlit as st
-import yfinance as yf
-import pandas as pd
-import numpy as np
 import torch
 import torch.nn as nn
+import numpy as np
+import pandas as pd
+import yfinance as yf
 from sklearn.preprocessing import MinMaxScaler
-import matplotlib.pyplot as plt
-import datetime
+from math import sqrt
+from sklearn.metrics import mean_absolute_error, mean_squared_error
+from datetime import date, timedelta
 
-# ------------------------------
-# 1️⃣ Define the LSTM model class
-# ------------------------------
+# ---------------------------
+# 1. Streamlit page setup
+# ---------------------------
+st.set_page_config(page_title="Stock Price Prediction (LSTM)", layout="centered")
+st.title("📈 Stock Price Prediction using LSTM (PyTorch)")
+st.write("This app downloads live stock data from Yahoo Finance and predicts the next-day closing price using an LSTM model.")
+
+# ---------------------------
+# 2. User input
+# ---------------------------
+ticker = st.text_input("Enter stock ticker symbol:", "AAPL")
+period = st.selectbox("Select data period:", ["1y", "3y", "5y"], index=2)
+st.write(f"Fetching last {period} of data for **{ticker}**...")
+
+# ---------------------------
+# 3. Download and preprocess data
+# ---------------------------
+try:
+    df = yf.download(ticker, period=period, interval="1d", auto_adjust=False)
+    if df.empty:
+        st.error("No data found. Try another ticker.")
+        st.stop()
+
+    df = df.rename(columns={'Adj Close': 'Adj_Close'})
+    df['Target'] = df['Adj_Close'].shift(-1)
+    df.dropna(inplace=True)
+
+    features = ['Open', 'High', 'Low', 'Close', 'Adj_Close', 'Volume']
+    scaler_X = MinMaxScaler()
+    scaler_y = MinMaxScaler()
+
+    X = scaler_X.fit_transform(df[features])
+    y = scaler_y.fit_transform(df[['Target']])
+
+    # Create sequences
+    def create_sequences(X, y, time_steps=60):
+        Xs, ys = [], []
+        for i in range(len(X) - time_steps):
+            Xs.append(X[i:(i + time_steps)])
+            ys.append(y[i + time_steps])
+        return np.array(Xs), np.array(ys)
+
+    time_steps = 60
+    X_seq, y_seq = create_sequences(X, y, time_steps)
+    X_seq_t = torch.tensor(X_seq, dtype=torch.float32)
+    y_seq_t = torch.tensor(y_seq, dtype=torch.float32)
+
+except Exception as e:
+    st.error(f"Data loading error: {e}")
+    st.stop()
+
+# ---------------------------
+# 4. Define model
+# ---------------------------
 class LSTMModel(nn.Module):
-    def __init__(self, input_size, hidden_size, num_layers, output_size):
+    def __init__(self, input_dim, hidden_dim, num_layers, output_dim, dropout=0.2):
         super(LSTMModel, self).__init__()
-        self.hidden_size = hidden_size
-        self.num_layers = num_layers
-        self.lstm = nn.LSTM(input_size, hidden_size, num_layers, batch_first=True)
-        self.fc1 = nn.Linear(hidden_size, 32)
-        self.fc2 = nn.Linear(32, output_size)
-
+        self.lstm = nn.LSTM(input_dim, hidden_dim, num_layers, batch_first=True, dropout=dropout)
+        self.fc1 = nn.Linear(hidden_dim, 16)
+        self.relu = nn.ReLU()
+        self.fc2 = nn.Linear(16, output_dim)
     def forward(self, x):
-        h0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size)
-        c0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size)
-        out, _ = self.lstm(x, (h0, c0))
-        out = torch.relu(self.fc1(out[:, -1, :]))
+        out, _ = self.lstm(x)
+        out = out[:, -1, :]  # last time step
+        out = self.relu(self.fc1(out))
         out = self.fc2(out)
         return out
 
-# ------------------------------
-# 2️⃣ Load trained model
-# ------------------------------
-input_size = 6
-hidden_size = 64
-num_layers = 2
-output_size = 1
-
-model = LSTMModel(input_size, hidden_size, num_layers, output_size)
-model.load_state_dict(torch.load("best_lstm_model.pth", map_location=torch.device("cpu")))
-model.eval()
-
-# ------------------------------
-# 3️⃣ Streamlit UI
-# ------------------------------
-st.title("📈 AAPL Next-Day Stock Price Prediction (Pytorch-LSTM Model)")
-
-# ------------------------------
-# 4️⃣ Fetch Yahoo Finance data safely
-# ------------------------------
-end_date = datetime.datetime.now()
-start_date = end_date - datetime.timedelta(days=365 * 5)
+# ---------------------------
+# 5. Load trained model
+# ---------------------------
+device = torch.device("cpu")
+model = LSTMModel(input_dim=len(features), hidden_dim=64, num_layers=2, output_dim=1).to(device)
 
 try:
-    df = yf.download("AAPL", start=start_date, end=end_date)
+    model.load_state_dict(torch.load("best_lstm_model.pth", map_location=device))
+    model.eval()
 except Exception as e:
-    st.error(f"❌ Error downloading data: {e}")
+    st.error(f"Model loading error: {e}")
     st.stop()
 
-if df is None or df.empty:
-    st.error("⚠️ No data downloaded. Try reloading the app in a few seconds.")
-    st.stop()
-
-st.write("Recent Data:", df.tail())
-
-# ------------------------------
-# 5️⃣ Feature scaling
-# ------------------------------
-features = ['Open', 'High', 'Low', 'Close', 'Adj Close', 'Volume']
-
-# ensure all required columns exist
-for f in features:
-    if f not in df.columns:
-        st.error(f"⚠️ Missing column in data: {f}")
-        st.stop()
-
-scaler = MinMaxScaler()
-scaled_data = scaler.fit_transform(df[features])
-
-# ------------------------------
-# 6️⃣ Prepare last 60 days
-# ------------------------------
-time_steps = 60
-if len(scaled_data) < time_steps:
-    st.error("⚠️ Not enough data to make prediction.")
-    st.stop()
-
-last_60 = scaled_data[-time_steps:]
-x_input = np.expand_dims(last_60, axis=0)
-x_tensor = torch.tensor(x_input, dtype=torch.float32)
-
-# ------------------------------
-# 7️⃣ Predict
-# ------------------------------
+# ---------------------------
+# 6. Make predictions
+# ---------------------------
 with torch.no_grad():
-    pred_scaled = model(x_tensor).numpy()
+    y_pred_scaled = model(X_seq_t).cpu().numpy()
 
-# Reconstruct shape for inverse transform
-zero_pad = np.zeros((1, 5))
-pred_combined = np.concatenate((zero_pad, pred_scaled), axis=1)
-next_day_pred = scaler.inverse_transform(pred_combined)[:, 4]  # Adj Close
+y_true = scaler_y.inverse_transform(y_seq)
+y_pred = scaler_y.inverse_transform(y_pred_scaled)
 
-# ------------------------------
-# 8️⃣ Display result
-# ------------------------------
-st.subheader(f"Predicted Next-Day Adj Close: **${next_day_pred[0]:.2f}**")
+rmse = sqrt(mean_squared_error(y_true, y_pred))
+mae = mean_absolute_error(y_true, y_pred)
+mape = np.mean(np.abs((y_true - y_pred) / y_true)) * 100
 
-# ------------------------------
-# 9️⃣ Plot
-# ------------------------------
-st.subheader("📊 Price Trend (Last 100 days + Prediction)")
-plt.figure(figsize=(10, 5))
-plt.plot(df['Adj Close'][-100:], label='Actual')
-plt.scatter(len(df) - 1, next_day_pred, color='red', label='Predicted Next Day')
-plt.legend()
-st.pyplot(plt)
+# ---------------------------
+# 7. Display results
+# ---------------------------
+st.subheader("📊 Model Performance")
+st.write(f"**RMSE:** {rmse:.3f}")
+st.write(f"**MAE:** {mae:.3f}")
+st.write(f"**MAPE:** {mape:.2f}%")
+
+st.subheader("📈 Recent Predictions")
+pred_df = pd.DataFrame({
+    "Date": df.index[-len(y_pred):],
+    "Actual": y_true.flatten(),
+    "Predicted": y_pred.flatten()
+})
+st.line_chart(pred_df.set_index("Date")[["Actual", "Predicted"]])
+
+# ---------------------------
+# 8. Next-day prediction
+# ---------------------------
+last_sequence = torch.tensor(X[-time_steps:], dtype=torch.float32).unsqueeze(0).to(device)
+next_day_pred_scaled = model(last_sequence).cpu().detach().numpy()
+next_day_pred = scaler_y.inverse_transform(next_day_pred_scaled)[0][0]
+
+st.subheader("📅 Next-Day Forecast")
+st.write(f"**Predicted next-day closing price:** ${next_day_pred:.2f}")
+
+st.success("✅ Prediction complete!")
+
