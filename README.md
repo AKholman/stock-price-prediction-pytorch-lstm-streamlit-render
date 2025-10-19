@@ -19,6 +19,12 @@ This converts raw values into a fixed numeric range (by default 0,1) so the LSTM
 
 2. 
 
+
+<p align="center">
+  <img src="https://github.com/AKholman/stock-price-prediction-pytorch-lstm-streamlit-render/blob/main/Graph.png?raw=true" width="400"/>
+  <br>
+</p>
+
 ![Alt text](https://github.com/AKholman/stock-price-prediction-pytorch-lstm-streamlit-render/blob/main/Graph.png?raw=true)
 
 
