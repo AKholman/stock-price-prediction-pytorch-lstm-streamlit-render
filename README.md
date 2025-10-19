@@ -1,18 +1,27 @@
 # ML-Powered Pipeline for Daily AAPL Stock Price Forecasting
 
-Goal: Predict next-day close price for AAPL (daily regression)
-Dataset: Daily OHLCV from Yahoo Finance, last 5 years (~1250 rows)
-Pipeline: CSV download → preprocessing → train/test split → feature engineering → model → deployment
-Serving & scaling: Expose API in Streamlit, handle multiple users
-Monitoring: Track MAE/RMSE on latest predictions, detect drift
-Tradeoffs & retraining: Decide update frequency (weekly/monthly), adjust features or model if performance drops
+Goal: Predict next-day close price for AAPL (daily regression);
+Dataset: Daily OHLCV+Adj_Close from Yahoo Finance, last 5 years (~1250 rows);
+Pipeline: data download → preprocessing → train/test split → feature engineering → model → deployment;
+Moetrics: MAE/RMSE on latest predictions;
+
+Models trained and tested: 
+Sarima (classical TSA);
+RandomRorest; 
+XGBoost;
+LSTM (Deep Learning approach, using Tensorflow/keras, Pytorch)
 
 
-Models: 
-Sarima (classical TSA)
-RandomRorest (ML approach)
-XGBoost (ML approach)
-LSTM (Deep Learning approach, using Tensorflow/keras)
+LSTM model with Pytorch shows the best performance. Therefore, below we describe some details of this model traning and testing. 
+
+1.  Using Min–Max scaling we scaled (normalized) the features (X) and the labels/targets (y).
+This converts raw values into a fixed numeric range (by default 0,1) so the LSTM (and the optimizer) can train stably and converge faster. The scalers are fit only on the training data, then applied to validation and test — which prevents information leakage.
+
+2. 
+
+![Alt text](https://github.com/AKholman/stock-price-prediction-pytorch-lstm-streamlit-render/blob/main/Graph.png?raw=true)
+
+
 
 
 Quick checklist you can copy into a project README
@@ -178,14 +187,14 @@ model.summary()
 
 🔹 Step 4. Data as it flows:
 
-Step	Layer	   Input shape	    Output shape
-1	    Input	    (60, 6)	   →     (60, 6)
-2	    LSTM(64)	(60, 6)	   →     (60, 64)
-3	    Dropout(0.2)	(60, 64) →   (60, 64)
-4	    LSTM(32)	(60, 64)	→    (32,)
-5	    Dropout(0.2)	(32,)	→    (32,)
-6	    Dense(16, ReLU)	(32,)	→    (16,)
-7	    Dense(1)	    (16,)	→    (1,)
+Step	Layer	      Input shape	     Output shape
+1	    Input	       (60, 6)	   →     (60, 6).      usually this is not considered as a layer
+2	    LSTM(64)	   (60, 6)	   →     (60, 64)
+3	    Dropout(0.2)   (60, 64)    →     (60, 64)
+4	    LSTM(32)	   (60, 64)	   →     (32,)
+5	    Dropout(0.2)	(32,)	   →     (32,)
+6	    Dense(16, ReLU)	(32,)	   →     (16,)
+7	    Dense(1)	    (16,)	   →     (1,)
 
 SUMMARY:
 Total layers: 7
