@@ -70,8 +70,12 @@ class LSTMModel(nn.Module):
   <br>
 </p>
 
+NN layers: 
 
-
+<p align="center">
+  <img src="https://github.com/AKholman/stock-price-prediction-pytorch-lstm-streamlit-render/blob/main/Graph_3.png?raw=true" width="600"/>
+  <br>
+</p>
 
 
 <p align="center">
