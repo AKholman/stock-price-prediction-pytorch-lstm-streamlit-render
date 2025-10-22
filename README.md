@@ -14,16 +14,77 @@ LSTM (Deep Learning approach, using Tensorflow/keras, Pytorch)
 
 LSTM model with Pytorch shows the best performance. Therefore, below we describe some details of this model traning and testing. 
 
-1.  Using Min–Max scaling we scaled (normalized) the features (X) and the labels/targets (y).
-This converts raw values into a fixed numeric range (by default 0,1) so the LSTM (and the optimizer) can train stably and converge faster. The scalers are fit only on the training data, then applied to validation and test — which prevents information leakage.
+1.  Using Min–Max scaling we scaled (normalized) the features (X) and the target (y). The scalers are fit only on the training data, then applied to validation and test — which prevents information leakage.
 
-2. 
+2. Sequence creation - 'def create_sequences(X, y, time_steps=60)' : 
+Goal of this step - Transform each continuous 1D timeline of features into overlapping time windows (sequences).
+Each sequence of time_steps = 60 days becomes one sample for the LSTM, and the label is the target value right after that window. 
+Output: we have NumPy arrays (X_train_seq, y_train_seq, etc.).
+
+But PyTorch models can only work with PyTorch tensors with GPU acceleration and automatic differentiation (autograd).
+
+3. So, Step 4 converts all the NumPy arrays (matrix) into PyTorch tensors and prepares them for efficient mini-batch training.
+X(rows, features) -> X(rows, timestep, features), i.e. 2D data (matrix) → 3D sequences (tensor)	LSTM needs (batch, time, features). 
+DataLoader (a PyTorch utility) breaks the dataset into mini-batches of 32 samples.
+
+4. LSTM model:
+class LSTMModel(nn.Module):
+    def __init__(self, input_dim, hidden_dim, num_layers, output_dim, dropout=0.2):
+        super(LSTMModel, self).__init__()
+        self.lstm = nn.LSTM(input_dim, hidden_dim, num_layers, batch_first=True, dropout=dropout)
+        self.fc1 = nn.Linear(hidden_dim, 16)
+        self.relu = nn.ReLU()
+        self.fc2 = nn.Linear(16, output_dim)
+        
+    def forward(self, x):
+        out, _ = self.lstm(x)
+        out = out[:, -1, :]  # take the last time step
+        out = self.relu(self.fc1(out))
+        out = self.fc2(out)
+        return out
+
+5. One full batch cycle of training: 
+    🔹 Step 1 — Forward pass:
+        Input batch → LSTM1 → LSTM2 → fc1 → ReLU → fc2 → Output → Compute prediction.
+
+    🔹 Step 2 — Compute loss:
+        Loss = criterion(output, true_y). (e.g., Mean Squared Error for regression)
+
+    🔹 Step 3 — Backpropagation:
+        Call loss.backward(): 
+            → PyTorch automatically computes gradients ∂loss/∂weight for all layers.
+
+    🔹 Step 4 — Optimizer update:
+        optimizer.step()
+            → All layer parameters are adjusted based on gradients.
+
+    🔹 Step 5 — Next batch:
+        LSTM starts fresh with new sequence inputs.
+            Gradients from the previous batch are cleared (optimizer.zero_grad()).
+                The updated weights now slightly better fit the data → model improves.
+
+
+
+<p align="center">
+  <img src="https://github.com/AKholman/stock-price-prediction-pytorch-lstm-streamlit-render/blob/main/Graph_2.png?raw=true" width="600"/>
+  <br>
+</p>
+
+
+
 
 
 <p align="center">
   <img src="https://github.com/AKholman/stock-price-prediction-pytorch-lstm-streamlit-render/blob/main/Graph.png?raw=true" width="600"/>
   <br>
 </p>
+
+
+
+
+
+
+
 
 
 
