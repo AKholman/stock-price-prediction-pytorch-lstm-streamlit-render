@@ -14,7 +14,7 @@ LSTM (Deep Learning approach, using Tensorflow/keras, Pytorch)
 
 LSTM model with Pytorch shows the best performance. Therefore, below we describe some details of this model traning and testing. 
 
-1.  Using Min–Max scaling we scaled (normalized) the features (X) and the target (y). The scalers are fit only on the training data, then applied to validation and test — which prevents information leakage.
+1.  Using Min–Max scaling we scaled (normalized) the features (X) and the target (y). The scalers are fit only on the training data, then applied to validation and test.
 
 2. Sequence creation - 'def create_sequences(X, y, time_steps=60)' : 
 Goal of this step - Transform each continuous 1D timeline of features into overlapping time windows (sequences).
@@ -23,7 +23,7 @@ Output: we have NumPy arrays (X_train_seq, y_train_seq, etc.).
 
 But PyTorch models can only work with PyTorch tensors with GPU acceleration and automatic differentiation (autograd).
 
-3. So, Step 4 converts all the NumPy arrays (matrix) into PyTorch tensors and prepares them for efficient mini-batch training.
+3. So, we converted all the NumPy arrays (matrix) into PyTorch tensors and prepares them for mini-batch training.
 X(rows, features) -> X(rows, timestep, features), i.e. 2D data (matrix) → 3D sequences (tensor)	LSTM needs (batch, time, features). 
 DataLoader (a PyTorch utility) breaks the dataset into mini-batches of 32 samples.
 
@@ -45,23 +45,52 @@ class LSTMModel(nn.Module):
 
 5. One full batch cycle of training: 
     🔹 Step 1 — Forward pass:
-        Input batch → LSTM1 → LSTM2 → fc1 → ReLU → fc2 → Output → Compute prediction.
+        Input batch → LSTM1 → LSTM2 → fc1 → ReLU → fc2 → Output → Prediction.
 
-    🔹 Step 2 — Compute loss:
-        Loss = criterion(output, true_y). (e.g., Mean Squared Error for regression)
+    🔹 Step 2 — Compute loss (prediction vs actual value):
+        Loss = criterion(output, true_y). (e.g., - Mean Squared Error for regression)
 
-    🔹 Step 3 — Backpropagation:
-        Call loss.backward(): 
-            → PyTorch automatically computes gradients ∂loss/∂weight for all layers.
+    🔹 Step 3 — Backpropagation: 
+        Backward pass & weight update (training phase) — this is where LSTM learns
+            Call loss.backward(): 
+                → loss.backward() - PyTorch automatically computes gradients ∂loss/∂weight for all layers.
 
-    🔹 Step 4 — Optimizer update:
-        optimizer.step()
-            → All layer parameters are adjusted based on gradients.
+        During BackPropagation: 
+            PyTorch uses autograd to trace all operations during forward pass.
+            It then applies BackPropagation Through Time (BPTT) to move gradients backward through:
 
-    🔹 Step 5 — Next batch:
-        LSTM starts fresh with new sequence inputs.
-            Gradients from the previous batch are cleared (optimizer.zero_grad()).
-                The updated weights now slightly better fit the data → model improves.
+                fc2 → fc1 → LSTM2 → LSTM1
+
+            And through time across all 60 timesteps inside each LSTM layer (the “through time” part).
+            So, every weight that influenced the prediction gets its gradient value calculated.
+
+    🔹 Step 4 — Optimizer 
+        Optimizer - torch.optim.Adam(model.parameters(), lr=0.001) - definition of optimizer;
+            lr=0.001 - learning rate;
+            
+            optimizer.zero_grad() - before going to the next batch, clear old gradients;
+            
+            optimizer.step() - starts new batch with updates all weights and biases in:
+                LSTM1 (input weights, recurrent weights, biases)
+                LSTM2 (same)
+                fc1 (weights + bias)
+                fc2 (weights + bias)
+    
+🔹 Step 5  — Repeat for every batch
+        Each batch computes its own loss and gradients.
+        Weights are updated after each batch (this is what makes it stochastic gradient descent).
+        After all batches are processed → one epoch is done.
+        After many epochs, model gradually converges.
+
+        Thus, each batch changes the model slightly — so the next batch starts with slightly improved weights.
+
+
+🔹 Step 6: Model Evaluation & Inference - final evaluation and prediction phase.
+    PyTorch handles weight storage and reloading into the right layers automatically.
+    with torch.no_grad():
+        y_pred_scaled = model(X_test_t).cpu().numpy()   - this code disables the gradient computation.
+        Reverse Scaling (Back to Original Prices)
+    Evaluating Performance using RMSE and MAE. 
 
 
 
@@ -73,7 +102,7 @@ class LSTMModel(nn.Module):
 NN layers: 
 
 <p align="center">
-  <img src="https://github.com/AKholman/stock-price-prediction-pytorch-lstm-streamlit-render/blob/main/Graph_3.png?raw=true" width="600"/>
+  <img src="https://github.com/AKholman/stock-price-prediction-pytorch-lstm-streamlit-render/blob/main/Graph_4.png?raw=true" width="600"/>
   <br>
 </p>
 
@@ -134,10 +163,8 @@ task = Regression
 # 2. Metrics & SLAs
 # -----------------
 metrics = ["MAE", "RMSE", "R2"]
-sla = {
-    "prediction_latency": "< 1 second per request",
-    "accuracy_threshold": "MAE < 3 USD"
-}
+sla = {"prediction_latency": "< 1 second per request",
+    "accuracy_threshold": "MAE < 3 USD"}
 
 # 3. Data Collection
 # ------------------
@@ -145,20 +172,12 @@ data_source = "Yahoo Finance"
 ticker = "AAPL"
 frequency = "Daily"
 lookback_period = "Last 5 years (~1250 rows)"
-data_pipeline = [
-    "Download CSV from Yahoo Finance",
-    "Load CSV into pandas DataFrame",
-    "Handle missing values",
-    "Feature engineering (e.g., moving averages, lag features)"
-]
 
 # 4. Train/Test Split
 # ------------------
-train_test_split = {
-    "train": "70-80% of historical data",
-    "test": "20-30% of historical data"
-}
-
+train_test_split = {"train": "70-80% of historical data",
+                     "test": "20-30% of historical data"}
+# ------------------
 # 5. Model Choice & Training
 # --------------------------
 models = ["RandomForestRegressor", "XGBoostRegressor", "LinearRegression"]
@@ -240,92 +259,7 @@ Input shape: (60 timesteps, 6 features)
 └─────────────────────────────┘
 
 
-1. MODEL DEFINITION:
-
-model = Sequential([
-    LSTM(64, return_sequences=True, input_shape=(X_train_seq.shape[1], X_train_seq.shape[2])),
-    Dropout(0.2),
-    LSTM(32, return_sequences=False),
-    Dropout(0.2),
-    Dense(16, activation='relu'),
-    Dense(1)
-])
-model.compile(optimizer='adam', loss='mse')
-model.summary()
-
-🔹 Step 4. Data as it flows:
-
-Step	Layer	      Input shape	     Output shape
-1	    Input	       (60, 6)	   →     (60, 6).      usually this is not considered as a layer
-2	    LSTM(64)	   (60, 6)	   →     (60, 64)
-3	    Dropout(0.2)   (60, 64)    →     (60, 64)
-4	    LSTM(32)	   (60, 64)	   →     (32,)
-5	    Dropout(0.2)	(32,)	   →     (32,)
-6	    Dense(16, ReLU)	(32,)	   →     (16,)
-7	    Dense(1)	    (16,)	   →     (1,)
-
-SUMMARY:
-Total layers: 7
-Input layer: (60, 6) → 6 features × 60 timesteps
+Total layers: 4
+Input layer: (60, 6) → 6 (features) × 60 (timestep)
 First LSTM layer: 64 neurons (each learning a temporal pattern)
 Output layer: 1 neuron (final continuous prediction)
-
-
-2. STEP_BY_STEP DESCRIPTION: 
-
-Sequential([...])
-
-A Keras model type that stacks layers one after another. Easier for simple models (like your LSTM).
-Internally, TensorFlow builds a computational graph of operations for forward and backward passes.
-
-LSTM(64, return_sequences=True, input_shape=(X_train_seq.shape[1], X_train_seq.shape[2]))
-LSTM layer → type of RNN for sequence data (time series, text, etc.).
-
-64 → number of hidden units (neurons in the LSTM cell). More units → more capacity to learn patterns.
-return_sequences=True → outputs the full sequence for the next layer.
-Why? Because the next LSTM layer expects a sequence as input.
-
-input_shape=(timesteps, features) → shape of one input sample:
-X_train_seq.shape[1] = 60 timesteps
-X_train_seq.shape[2] = 6 features per timestep
-
-Dropout(0.2)
-Regularization layer to prevent overfitting. Randomly sets 20% of the input neurons to zero during training. Helps the model not memorize training data.
-
-LSTM(32, return_sequences=False)
-Second LSTM layer stacked on the first. 32 → hidden units (fewer than the first layer)
-return_sequences=False → outputs only the last timestep.
-Why? Because the next layer is Dense, which expects a single vector, not a sequence.
-
-Dropout(0.2)
-Another dropout layer after the second LSTM. Helps prevent overfitting again.
-
-Dense(16, activation='relu')
-Fully connected (feedforward) layer. 16 → number of neurons
-
-activation='relu' → non-linear activation function:
-ReLU(x) = max(0, x)
-Introduces non-linearity → essential for neural networks to learn complex patterns
-
-Dense(1)
-Output layer. 1 neuron → predicts a single value (e.g., next-day stock price). No activation → linear output (common for regression)
-
-3. MODEL COMPILATION:
-
-model.compile(optimizer='adam', loss='mse').  optimizer='adam. Adam = Adaptive Moment Estimation. Popular gradient descent algorithm with adaptive learning rate
-Handles weight updates efficiently
-
-loss='mse'.  Mean Squared Error. Standard loss for regression tasks.
-Measures difference between predicted and actual values
-
-Keras functions involved here:
-compile() → prepares the model for training (sets optimizer, loss, metrics)
-TensorFlow handles the math behind the scenes (forward pass, backward pass, gradient computation).
-
-4. MODEL SUMMARY
-model.summary(): 
-
-Keras method that prints:
-Each layer’s name, output shape, number of parameters
-Total trainable parameters (weights + biases)
-Helps to verify model architecture
