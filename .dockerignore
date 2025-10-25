@@ -1,0 +1,9 @@
+data/
+.csv
+.ipynb
+.png
+.md
+.vscode/
+.git
+*.pyc
+__pycache__/
