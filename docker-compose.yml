@@ -55,7 +55,7 @@ services:
 
   # Airflow
   airflow:
-    image: apache/airflow:2.9.4
+    image: apache/airflow
     container_name: airflow
     environment:
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
