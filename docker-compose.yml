@@ -16,7 +16,7 @@ services:
 
   # MLflow server
   mlflow:
-    image: mlflow/mlflow:2.6.1
+    image: mlflow/mlflow:2.9.2
     container_name: mlflow_server
     ports:
       - "5000:5000"
