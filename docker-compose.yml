@@ -21,7 +21,7 @@ services:
       dockerfile: Dockerfile.mlflow
     container_name: mlflow_server
     ports:
-      - "5000:5000"
+      - "5500:5000"
     depends_on:
       - minio
       - postgres
